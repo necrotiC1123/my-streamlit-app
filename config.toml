@@ -1,0 +1,16 @@
+# Bu dosyanın GitHub'daki yolu: .streamlit/config.toml
+# (Add file → Create new file → isim kutusuna ".streamlit/config.toml" yaz)
+
+[theme]
+base = "light"
+primaryColor = "#2563eb"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f6f8fa"
+textColor = "#1c2430"
+font = "sans serif"
+
+[theme.sidebar]
+backgroundColor = "#f7f9fb"
+
+[browser]
+gatherUsageStats = false
