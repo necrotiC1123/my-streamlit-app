@@ -1,4 +1,4 @@
-streamlit>=1.46
+streamlit>=1.46,<1.59  # 1.59+ BaseWeb kaldirimi tab/radio secicilerini etkileyebilir
 pandas>=2.0
 numpy>=1.26
 plotly>=5.20
