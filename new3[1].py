@@ -8586,12 +8586,55 @@ def list_account_models(api_key):
 # 9) GRAFİKLER (Plotly)
 # ---------------------------------------------------------------------------
 
+_PLOTLY_KAYITLI = False
+
+
+def _plotly_sablon_kaydet():
+    """Premium plotly şablonları — kart üstüne oturması için şeffaf
+    zemin; Wong (2011) renk-körü-güvenli palet (uygulamanın geneliyle
+    tutarlı). NOT: plotly'de font=dict(...) ile font_color aynı çağrıda
+    verilemez (ValueError) — renk font dict'inin İÇİNDE verilir."""
+    global _PLOTLY_KAYITLI
+    if _PLOTLY_KAYITLI:
+        return
+    import plotly.io as pio
+    WONG = ["#56b4e9", "#e69f00", "#009e73", "#f0e442",
+            "#0072b2", "#d55e00", "#cc79a7", "#94a3b8"]
+
+    def _yap(txt, grid, zero, hoverbg):
+        eksen = dict(gridcolor=grid, zerolinecolor=zero,
+                     linecolor=zero, tickcolor=zero)
+        return go.layout.Template(layout=go.Layout(
+            font=dict(family="Inter, sans-serif", size=13, color=txt),
+            title=dict(font=dict(family="Inter, sans-serif",
+                                 size=17, color=txt)),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=48, r=24, t=48, b=40),
+            hoverlabel=dict(bgcolor=hoverbg,
+                            bordercolor="rgba(0,0,0,0)",
+                            font=dict(family="Inter, sans-serif",
+                                      size=12, color=txt)),
+            colorway=WONG,
+            xaxis=eksen, yaxis=eksen,
+            legend=dict(bgcolor="rgba(0,0,0,0)")))
+
+    pio.templates["premium_dark"] = _yap(
+        "#e7ecf3", "rgba(255,255,255,0.06)",
+        "rgba(255,255,255,0.10)", "#1a2030")
+    pio.templates["premium_dark"].data.heatmap = [go.Heatmap(colorscale=[
+        [0.0, "#0b0e14"], [0.33, "#153b52"],
+        [0.66, "#166a86"], [1.0, "#22c3b8"]])]
+    pio.templates["premium_light"] = _yap(
+        "#1c1c1e", "rgba(0,0,0,0.06)",
+        "rgba(0,0,0,0.12)", "#ffffff")
+    _PLOTLY_KAYITLI = True
+
+
 def _plotly_tema():
-    """Grafik şablonu temayı takip eder (açık→plotly_white)."""
+    """Grafik şablonu temayı takip eder (premium_dark / premium_light)."""
     try:
-        return ("plotly_white"
-                if st.get_option("theme.base") == "light"
-                else "plotly_dark")
+        _plotly_sablon_kaydet()
+        return ("premium_dark" if _tema_koyu_mu() else "premium_light")
     except Exception:
         return "plotly_white"
 
@@ -8782,24 +8825,13 @@ def fig_gauge(m):
 # 10) ARAYÜZ
 # ---------------------------------------------------------------------------
 
-def render_sidebar():
-    sb = st.sidebar
-    sb.markdown(f"## 🔍 {APP_TITLE}")
-    sb.caption("Ham veri → matematik → hüküm → Claude derin analiz")
-    sb.caption("🏷️ SÜRÜM: v5 — Tahsis + TÜM-ABD tarama (2026-08-05)")
-    mod = sb.radio("🧭 Mod",
-                   [MOD_TEK, MOD_TARAMA, MOD_RAKIP, MOD_PORTFOY,
-                    MOD_PIYASA, MOD_KRIPTO],
-                   key="mod",
-                   help="Yaklaşanlar: evrenden alım bölgesine yaklaşan "
-                        "hisseleri bulur. Rakip Kıyası: seçtiğin 2-8 "
-                        "hisseyi yan yana kıyaslar. Tek Hisse: tam derin "
-                        "analiz — nihai hüküm burada.")
-    if mod in (MOD_TARAMA, MOD_RAKIP, MOD_PORTFOY, MOD_PIYASA,
-               MOD_KRIPTO):
-        sb.info("Kontroller ana ekranda. Aşağıdaki tek-hisse ayarları bu "
-                "modda kullanılmaz.")
-
+def render_girdiler():
+    """Tek Hisse girdileri — SAYFA İÇİ kontrol paneli. Eski kenar
+    çubuğu buraya taşındı; mod seçimi artık üst navigasyonda."""
+    kap = st.container(border=True)
+    kap.markdown("#### ⚙️ Analiz Girdileri")
+    sol, sag = kap.columns([1.05, 1])
+    sb = sol
     # Başlangıç değeri value= yerine session_state ile verilir; böylece
     # köprünün (_git_tkr) rerun'da bu key'e yazması uyarı/hata üretmez.
     st.session_state.setdefault("tkr", "AAPL")
@@ -8847,7 +8879,7 @@ def render_sidebar():
 
     sugg = st.session_state.get("sugg")
     tkey = st.session_state.get("tkr", "GENEL")
-    with sb.expander("📐 DCF Varsayımları", expanded=False):
+    with sag.expander("📐 DCF Varsayımları", expanded=False):
         # (a2) Damodaran ima edilen ERP'yi HER AY yayınlar; sabit tarihsel
         # ERP kullanmak eskir. Rf de 10Y Hazine ile birlikte oynar.
         # ── CANLI 10Y — kenar çubuğu varsayılanı buradan gelir ───────
@@ -8935,7 +8967,7 @@ def render_sidebar():
                  "program hiçbirine 'al' diyemedi. Açarsan çok temkinli "
                  "olursun — kaliteli şirketler sürekli 'pahalı' görünür.")
 
-    with sb.expander("🧠 Claude Ayarları", expanded=False):
+    with sag.expander("🧠 Claude Ayarları", expanded=False):
         env_key = os.environ.get("ANTHROPIC_API_KEY", "")
         api_key = st.text_input("API anahtarı", type="password",
                                 value="", placeholder=("ortamdan alındı ✓"
@@ -8958,7 +8990,7 @@ def render_sidebar():
                               help="API tarafında ek arama ücreti doğurur; "
                                    "hesapta kapalıysa otomatik geri düşülür.")
 
-    with sb.expander("ℹ️ Veri kaynağı & sınırlar"):
+    with sag.expander("ℹ️ Veri kaynağı & sınırlar"):
         st.markdown(
             "- Kaynak: **Yahoo Finance (yfinance)** — hızlı tarama katmanı; "
             "SEC dipnot derinliği **değildir**.\n"
@@ -8968,7 +9000,7 @@ def render_sidebar():
             "görevlidir.\n"
             "- Bu araç **yatırım tavsiyesi değildir**.")
 
-    with sb.expander("🛡️ Stop & Pozisyon (kanıta dayalı)", expanded=False):
+    with sag.expander("🛡️ Stop & Pozisyon (kanıta dayalı)", expanded=False):
         stop_acik = st.toggle(
             "Stop & Destek modülü", value=True,
             help="ATR-22 Chandelier trailing + destek-bandı-altı giriş "
@@ -9014,7 +9046,7 @@ def render_sidebar():
          "giris_carpan": giris_carpan, "r_hedef": r_hedef,
          "trend_filtre": trend_filtre,
          "portfoy": portfoy, "risk_pct": risk_pct}
-    with sb.expander("📓 Kayıt Defteri (kalibrasyon)"):
+    with sag.expander("📓 Kayıt Defteri (kalibrasyon)"):
         gk = gunluk_oku()
         if gk:
             st.caption(f"{len(gk)} analiz kaydı · `{GUNLUK_DOSYA}` "
@@ -9073,7 +9105,7 @@ def render_sidebar():
         else:
             st.caption("Henüz kayıt yok — her 'Analizi Çalıştır' bir kayıt "
                        "düşer; zamanla hükümlerin isabeti izlenir.")
-    return (mod, ticker, run, a, api_key, model, use_web, edu, use_edgar,
+    return (ticker, run, a, api_key, model, use_web, edu, use_edgar,
             peers, call_text, maliyet)
 
 
@@ -9532,8 +9564,20 @@ def render_karar_ekrani(m, a):
 
 def render_verdict(m):
     label, emoji, kind, msg = m["verdict"]
-    st.markdown(f"## {emoji} HÜKÜM: {label}")
-    getattr(st, kind)(msg)
+    verdict_banner(label, emoji, kind, msg)
+    _g1, _g2, _gb = st.columns([1, 1, 2.6])
+    with _g1:
+        if m.get("quality") is not None:
+            gauge(m["quality"], "Kalite",
+                  "ok" if m["quality"] >= 60 else
+                  "warn" if m["quality"] >= 40 else "bad")
+    with _g2:
+        if m.get("score") is not None:
+            gauge(m["score"], "Pahalılık",
+                  "ok" if m["score"] < 35 else
+                  "warn" if m["score"] < 55 else "bad")
+    with _gb:
+        st.empty()
     q = m.get("quality")
     sc = m.get("score")
     st.caption(f"İki eksenli hüküm → **Şirket kalitesi:** "
@@ -16675,60 +16719,347 @@ def _render_rakip_tablo(veriler):
         st.rerun()
 
 
-def _site_giydir():
-    """Site cilası — YALNIZ görünüm (CSS); davranışa/mantığa dokunmaz.
-    Tema tabanını config.toml belirler; buradaki kart/kenar stilleri
-    tabana göre (açık/koyu) seçilir. Seçici tutmazsa hiçbir şey
-    bozulmaz, sadece süs kaybolur."""
+# ═══════════════════════════════════════════════════════════════════
+# UI ADAPTÖRÜ — özel HTML kart sistemi (yapısal yeniden tasarım)
+# st.metric/st.info duvarları yerine: bento KPI, hüküm banner'ı,
+# conic-gradient gauge, hero. YALNIZ görsel; hesap/mantık değişmez.
+# Kullanıcı verisi daima esc() ile kaçırılır (XSS koruması).
+# ═══════════════════════════════════════════════════════════════════
+import html as _html_mod
+
+
+def esc(x):
+    return _html_mod.escape(str(x))
+
+
+def _ui_tok():
+    if _tema_koyu_mu():
+        return dict(card="#131722", line="rgba(255,255,255,0.09)",
+                    txt="#e7ecf3", mut="rgba(231,236,243,0.60)",
+                    accent="#6366f1", ok="#22c55e", warn="#f59e0b",
+                    bad="#ef4444", info="#38bdf8")
+    return dict(card="#ffffff", line="rgba(0,0,0,0.09)",
+                txt="#1c1c1e", mut="rgba(28,28,30,0.60)",
+                accent="#4f46e5", ok="#16a34a", warn="#d97706",
+                bad="#dc2626", info="#0284c7")
+
+
+def _hero(baslik, alt=""):
+    altp = f"<p>{esc(alt)}</p>" if alt else ""
+    st.markdown(f'<div class="hero"><h1>{esc(baslik)}</h1>{altp}</div>',
+                unsafe_allow_html=True)
+
+
+def kpi_serit(kartlar):
+    """kartlar: [(etiket, değer, alt_yazı|None, ton), ...] → bento grid."""
+    T = _ui_tok()
+    h = []
+    for lab, val, sub, ton in kartlar:
+        renk = T.get(ton or "accent", T["accent"])
+        altp = (f'<div style="color:{renk};font-size:.76rem;margin-top:3px;'
+                f'font-weight:600">{esc(sub)}</div>') if sub else ""
+        h.append(f'<div class="kpi"><div class="kpi-l">{esc(lab)}</div>'
+                 f'<div class="kpi-v">{esc(val)}</div>{altp}</div>')
+    st.markdown('<div class="kpi-grid">' + "".join(h) + "</div>",
+                unsafe_allow_html=True)
+
+
+def rozet(text, ton="accent"):
+    T = _ui_tok()
+    renk = T.get(ton, T["accent"])
+    return (f'<span style="background:{renk}22;color:{renk};'
+            f'border:1px solid {renk}55;border-radius:999px;'
+            f'padding:2px 10px;font-size:.75rem;font-weight:600;'
+            f'margin-right:6px">{esc(text)}</span>')
+
+
+def gauge(pct, label, ton="ok"):
+    """0-100 → conic-gradient halka gösterge (SVG/JS'siz)."""
+    T = _ui_tok()
+    renk = T.get(ton, T["ok"])
+    p = max(0, min(100, int(round(pct or 0))))
+    st.markdown(
+        f'<div style="display:flex;flex-direction:column;align-items:center;'
+        f'gap:6px;margin:4px 0">'
+        f'<div style="width:104px;height:104px;border-radius:50%;'
+        f'background:radial-gradient(closest-side,{T["card"]} 71%,'
+        f'transparent 72% 100%),conic-gradient({renk} {p*3.6:.0f}deg,'
+        f'{T["line"]} 0);display:flex;align-items:center;'
+        f'justify-content:center;border:1px solid {T["line"]}">'
+        f'<span style="color:{T["txt"]};font-weight:700;'
+        f'font-size:1.15rem">{p}</span></div>'
+        f'<span style="color:{T["mut"]};font-size:.8rem">{esc(label)}'
+        f'</span></div>', unsafe_allow_html=True)
+
+
+def verdict_banner(label, emoji, kind, msg):
+    T = _ui_tok()
+    renk = {"success": T["ok"], "warning": T["warn"],
+            "error": T["bad"], "info": T["info"]}.get(kind, T["info"])
+    st.markdown(
+        f'<div style="display:flex;gap:14px;align-items:flex-start;'
+        f'background:linear-gradient(90deg,{renk}22,transparent 70%);'
+        f'border:1px solid {T["line"]};border-left:5px solid {renk};'
+        f'border-radius:14px;padding:16px 20px;margin:6px 0 10px">'
+        f'<span style="font-size:1.7rem;line-height:1.1">{emoji}</span>'
+        f'<div><div style="color:{T["txt"]};font-weight:800;'
+        f'font-size:1.15rem;letter-spacing:-.01em">HÜKÜM: {esc(label)}'
+        f'</div><div style="color:{T["mut"]};font-size:.92rem;'
+        f'margin-top:4px">{esc(msg)}</div></div></div>',
+        unsafe_allow_html=True)
+
+
+def _tema_koyu_mu():
+    """GERÇEKTE render edilen temayı tespit eder (config değil, ekran):
+    1) st.context.theme.type (v1.46+ — izleyici bazında doğru kaynak),
+    2) yoksa config theme.base,
+    3) o da yoksa AÇIK varsay — karanlığa BOYAMA (güvenli taraf).
+    Bu, config.toml eksik/yanlış yoldayken koyu CSS'in açık temanın
+    üstüne binip yazıları okunmaz yapmasını (16 Ağu vakası) önler."""
     try:
-        acik = st.get_option("theme.base") == "light"
+        tip = getattr(getattr(st, "context", None), "theme", None)
+        tip = getattr(tip, "type", None)
+        if tip in ("light", "dark"):
+            return tip == "dark"
     except Exception:
-        acik = True
-    if acik:
-        st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-html, body, .stApp, .stApp p, .stApp div, .stApp span, .stApp label,
-.stApp li, .stApp input, .stApp button, .stApp textarea, .stApp select
-  {font-family:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;}
-.stApp code, .stApp pre, .stApp kbd, .stApp samp
-  {font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;}
-footer {visibility: hidden;}
-[data-testid="stDecoration"] {display: none;}
-.block-container {max-width: 1280px; padding-top: 1.4rem;
-                  padding-bottom: 3rem;}
-h1, h2, h3 {letter-spacing: -0.01em; color: #0f172a;}
-[data-testid="stSidebar"] {background: #f7f9fb;
-    border-right: 1px solid #e6eaf0;}
-[data-testid="stMetric"] {background: #ffffff;
-    border: 1px solid #e6eaf0; border-radius: 12px;
-    padding: 12px 14px; box-shadow: 0 1px 2px rgba(16,24,40,.05);}
-[data-testid="stMetricValue"] {font-size: 1.3rem; font-weight: 600;}
-[data-testid="stMetricLabel"] p {color: #5b6472;}
-div[data-testid="stDataFrame"] {border: 1px solid #e6eaf0;
-    border-radius: 12px; overflow: hidden;}
-[data-testid="stExpander"] {border: 1px solid #e6eaf0;
-    border-radius: 12px; background: #ffffff;}
-div[data-testid="stAlert"] {border-radius: 12px;}
-.stButton > button {border-radius: 10px; font-weight: 600;}
-button[data-baseweb="tab"] {font-weight: 600;}
-[data-testid="stVerticalBlockBorderWrapper"] {border-radius: 14px;}
-</style>""", unsafe_allow_html=True)
+        pass
+    try:
+        b = st.get_option("theme.base")
+        if b in ("light", "dark"):
+            return b == "dark"
+    except Exception:
+        pass
+    return False
+
+
+def _site_giydir():
+    """PREMIUM design system — YALNIZ görünüm (CSS). Token'lar tema
+    tabanına göre seçilir; seçiciler stabil data-testid + :has()
+    (baseweb'e bağımlı DEĞİL). Seçici tutmazsa süs kaybolur, işlev
+    bozulmaz. prefers-reduced-motion korumalı."""
+    _koyu = _tema_koyu_mu()
+    if _koyu:
+        tok = dict(
+            bg="#0b0e14", surface="#131722",
+            border="rgba(255,255,255,0.08)",
+            border2="rgba(255,255,255,0.13)",
+            txt="#e7ecf3", txt2="rgba(231,236,243,0.62)",
+            accent="#6366f1", accent2="#8b5cf6",
+            gain="#22c55e", loss="#ef4444",
+            glow1="rgba(99,102,241,0.14)", glow2="rgba(139,92,246,0.10)",
+            golge="rgba(0,0,0,0.28)", sidebg="#0a0d14")
     else:
-        st.markdown("""
+        tok = dict(
+            bg="#fafaf9", surface="#ffffff",
+            border="rgba(0,0,0,0.08)", border2="rgba(0,0,0,0.13)",
+            txt="#1c1c1e", txt2="rgba(28,28,30,0.62)",
+            accent="#4f46e5", accent2="#7c3aed",
+            gain="#16a34a", loss="#dc2626",
+            glow1="rgba(79,70,229,0.08)", glow2="rgba(124,58,237,0.06)",
+            golge="rgba(16,24,40,0.08)", sidebg="#f4f4f2")
+    st.markdown(f"""
 <style>
-footer {visibility: hidden;}
-[data-testid="stDecoration"] {display: none;}
-.block-container {padding-top: 1.6rem; padding-bottom: 3rem;
-                  max-width: 1280px;}
-[data-testid="stMetricValue"] {font-size: 1.35rem;}
-[data-testid="stMetric"] {background: rgba(151,166,195,.08);
-    border: 1px solid rgba(151,166,195,.20); border-radius: 12px;
-    padding: 10px 14px;}
-[data-testid="stSidebar"] {border-right: 1px solid rgba(151,166,195,.15);}
-div[data-testid="stDataFrame"] {border: 1px solid rgba(151,166,195,.15);
-    border-radius: 10px;}
+:root {{
+  --bg:{tok['bg']}; --surface:{tok['surface']};
+  --border:{tok['border']}; --border2:{tok['border2']};
+  --txt:{tok['txt']}; --txt2:{tok['txt2']};
+  --accent:{tok['accent']}; --accent2:{tok['accent2']};
+  --gain:{tok['gain']}; --loss:{tok['loss']};
+  --r-sm:8px; --r-md:12px; --r-lg:16px;
+  --shadow-1:0 1px 2px {tok['golge']};
+  --shadow-2:0 4px 12px {tok['golge']}, 0 0 0 1px var(--border);
+  --shadow-3:0 12px 32px {tok['golge']}, 0 0 0 1px var(--border2);
+  --ease:cubic-bezier(0.4,0,0.2,1);
+}}
+#MainMenu, footer {{visibility: hidden;}}
+[data-testid="stDecoration"] {{display: none;}}
+
+/* Katmanlı glow arka plan */
+[data-testid="stAppViewContainer"] {{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, {tok['glow1']}, transparent 60%),
+    radial-gradient(1000px 500px at 90% 0%, {tok['glow2']}, transparent 55%),
+    var(--bg);
+  background-attachment: fixed;
+}}
+[data-testid="stAppViewContainer"]::before {{
+  content:""; position:fixed; inset:0; pointer-events:none; opacity:.28;
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 22px 22px; z-index:0;
+}}
+
+/* Yapışkan cam header */
+.stAppHeader, [data-testid="stHeader"] {{
+  background: transparent !important;
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}}
+
+/* İçerik: genişlik + yumuşak giriş */
+.stMainBlockContainer, .block-container {{
+  padding-top: 3rem; padding-bottom: 3rem; max-width: 1280px;
+  animation: fadeUp .45s var(--ease) both;
+}}
+@keyframes fadeUp {{
+  from {{opacity:0; transform:translateY(8px);}}
+  to {{opacity:1; transform:none;}}
+}}
+
+/* Başlıklar: sıkı + gradient h1 */
+h1, h2 {{letter-spacing:-0.02em; font-weight:700;}}
+h1 {{
+  background: linear-gradient(135deg, var(--txt), var(--accent));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}}
+
+/* Metric → KPI kartı (tabular rakam) */
+[data-testid="stMetric"] {{
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 14px 18px;
+  box-shadow: var(--shadow-2);
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease);
+}}
+[data-testid="stMetric"]:hover {{
+  transform: translateY(-2px); box-shadow: var(--shadow-3);
+}}
+[data-testid="stMetricValue"] {{
+  font-variant-numeric: tabular-nums; font-feature-settings:"tnum" 1;
+  font-weight:700; letter-spacing:-0.01em;
+}}
+[data-testid="stMetricLabel"] {{color: var(--txt2); font-weight:500;}}
+[data-testid="stMetricDelta"] {{
+  font-variant-numeric: tabular-nums; border-radius:999px;
+  padding:2px 8px; font-weight:600; font-size:.82rem; width:fit-content;
+}}
+
+/* container(border=True) → kart */
+[data-testid="stVerticalBlockBorderWrapper"] {{
+  background: var(--surface);
+  border:1px solid var(--border) !important;
+  border-radius: var(--r-lg); box-shadow: var(--shadow-2);
+}}
+
+/* Expander kart */
+[data-testid="stExpander"] {{
+  border:1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface); overflow:hidden;
+}}
+[data-testid="stExpander"] details > summary {{
+  font-weight:600; transition: background .15s var(--ease);
+}}
+[data-testid="stExpander"] details > summary:hover {{
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}}
+
+/* Alert'ler: zarif callout + tür aksanı */
+.stAlert {{
+  border-radius: var(--r-md) !important;
+  border:1px solid var(--border) !important;
+  box-shadow: var(--shadow-1);
+}}
+.stAlert[kind="info"]    {{border-left:4px solid var(--accent) !important;}}
+.stAlert[kind="success"] {{border-left:4px solid var(--gain) !important;}}
+.stAlert[kind="warning"] {{border-left:4px solid #f59e0b !important;}}
+.stAlert[kind="error"]   {{border-left:4px solid var(--loss) !important;}}
+
+/* Sidebar zemini — config uygulanmasa bile tutarlı kalır */
+[data-testid="stSidebar"] {{
+  background: {tok['sidebg']};
+  border-right: 1px solid var(--border);
+}}
+
+/* Sidebar: premium nav pill (baseweb'siz :has ile) */
+[data-testid="stSidebar"] [data-testid="stRadio"] label {{
+  display:flex; align-items:center; padding:8px 12px; margin:2px 0;
+  border-radius: var(--r-sm); cursor:pointer;
+  transition: background .15s var(--ease);
+}}
+[data-testid="stSidebar"] [data-testid="stRadio"] label:hover {{
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}}
+[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {{
+  background: linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight:600; color: var(--txt);
+}}
+[data-testid="stSidebar"] [data-testid="stRadio"] label > div:first-child
+  {{display:none;}}
+
+/* Butonlar */
+[data-testid="stBaseButton-primary"] {{
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border:none; color:#fff; font-weight:600;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease);
+}}
+[data-testid="stBaseButton-primary"]:hover {{
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 50%, transparent);
+}}
+[data-testid="stBaseButton-secondary"] {{
+  background: transparent; border:1px solid var(--border2);
+  color: var(--txt); font-weight:500;
+  transition: background .15s var(--ease), border-color .15s var(--ease);
+}}
+[data-testid="stBaseButton-secondary"]:hover {{
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: var(--accent);
+}}
+
+/* Tabs (baseweb kaldırılırsa yalnız süs gider) */
+.stTabs [data-baseweb="tab-list"] {{gap:4px; border-bottom:1px solid var(--border);}}
+.stTabs [data-baseweb="tab"] {{font-weight:500; color:var(--txt2);}}
+.stTabs [aria-selected="true"] {{color:var(--txt); font-weight:600;}}
+
+/* Input odak halkası */
+[data-testid="stTextInput"] input:focus,
+[data-testid="stNumberInput"] input:focus {{
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}}
+
+/* Dataframe dış çerçeve (canvas içi stillenemez — mimari sınır) */
+[data-testid="stDataFrame"] {{
+  border-radius: var(--r-md); overflow:hidden; box-shadow: var(--shadow-2);
+}}
+
+/* Özel scrollbar */
+::-webkit-scrollbar {{width:10px; height:10px;}}
+::-webkit-scrollbar-track {{background: transparent;}}
+::-webkit-scrollbar-thumb {{
+  background: var(--border2); border-radius:999px;
+  border:2px solid transparent; background-clip: padding-box;
+}}
+::-webkit-scrollbar-thumb:hover {{background: var(--accent);}}
+
+@media (prefers-reduced-motion: reduce) {{
+  *, *::before, *::after {{animation:none !important; transition:none !important;}}
+}}
 </style>""", unsafe_allow_html=True)
+    T = _ui_tok()
+    st.markdown(f"""
+<style>
+/* İSKELET: kenar çubuğu tamamen kapatıldı — navigasyon artık üstte */
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"]
+  {{display:none !important;}}
+.hero {{background:linear-gradient(120deg,{T['accent']}1f,transparent 60%),
+       {T['card']};border:1px solid {T['line']};border-radius:18px;
+       padding:20px 24px;margin:4px 0 16px;}}
+.hero h1 {{margin:0;font-size:1.45rem;letter-spacing:-.02em;
+       background:none;-webkit-background-clip:initial;
+       background-clip:initial;color:{T['txt']};}}
+.hero p {{margin:6px 0 0;color:{T['mut']};font-size:.9rem;}}
+.kpi-grid {{display:grid;gap:12px;margin:6px 0 14px;
+       grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}}
+.kpi {{background:{T['card']};border:1px solid {T['line']};
+       border-radius:14px;padding:12px 14px;}}
+.kpi-l {{color:{T['mut']};font-size:.72rem;text-transform:uppercase;
+       letter-spacing:.05em;font-weight:600;}}
+.kpi-v {{color:{T['txt']};font-size:1.3rem;font-weight:750;
+       font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+       margin-top:2px;}}
+</style>""", unsafe_allow_html=True)
+
 
 
 def _giris_kapisi():
@@ -16757,10 +17088,55 @@ def _giris_kapisi():
     st.stop()
 
 
+def _pg_tek():
+    _hero("🔬 Tek Hisse — Derin Analiz",
+          "Ham veri → matematik → hüküm → istersen Claude raporu")
+    g = render_girdiler()
+    _tek_hisse_akisi(*g)
+
+
+def _pg_tarama():
+    render_screener()
+
+
+def _pg_rakip():
+    render_rakip()
+
+
+def _pg_portfoy():
+    render_portfoy()
+
+
+def _pg_piyasa():
+    render_piyasa()
+
+
+def _pg_kripto():
+    render_kripto()
+
+
+def _sayfalar():
+    """Üst navigasyon sayfaları — eski MOD radio'nun yerini alır."""
+    return {
+        "tek": st.Page(_pg_tek, title="Tek Hisse", icon="🔬",
+                       url_path="tek", default=True),
+        "tarama": st.Page(_pg_tarama, title="Yaklaşanlar", icon="🎯",
+                          url_path="tarama"),
+        "rakip": st.Page(_pg_rakip, title="Rakip Kıyası", icon="⚔️",
+                         url_path="rakip"),
+        "portfoy": st.Page(_pg_portfoy, title="Portföy", icon="👜",
+                           url_path="portfoy"),
+        "piyasa": st.Page(_pg_piyasa, title="Piyasa", icon="📉",
+                          url_path="piyasa"),
+        "kripto": st.Page(_pg_kripto, title="Kripto", icon="🪙",
+                          url_path="kripto"),
+    }
+
+
 def main():
     st.set_page_config(
         page_title=APP_TITLE, page_icon="🔍", layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="collapsed",
         menu_items={"Get help": None, "Report a bug": None,
                     "About": (APP_TITLE + " — kişisel analiz "
                               "terminali. Yatırım tavsiyesi "
@@ -16773,27 +17149,20 @@ def main():
     # yazılamaz — bu yüzden buton yalnız not bırakır, burada işlenir).
     if "_git_tkr" in st.session_state:
         st.session_state["tkr"] = st.session_state.pop("_git_tkr")
-        st.session_state["mod"] = st.session_state.pop("_git_mod", MOD_TEK)
+        st.session_state.pop("_git_mod", None)
+        st.session_state["_git_tek"] = True
 
-    (mod, ticker, run, a, api_key, model, use_web, edu, use_edgar,
-     peers, call_text, maliyet) = render_sidebar()
+    # ── ÜST NAVİGASYON KABUĞU — kenar çubuğu ve mod radio kaldırıldı ─
+    sayfalar = _sayfalar()
+    nav = st.navigation(list(sayfalar.values()), position="top")
+    if st.session_state.pop("_git_tek", False):
+        st.switch_page(sayfalar["tek"])
+    nav.run()
 
-    if mod == MOD_TARAMA:
-        render_screener()
-        return
-    if mod == MOD_RAKIP:
-        render_rakip()
-        return
-    if mod == MOD_PORTFOY:
-        render_portfoy()
-        return
-    if mod == MOD_PIYASA:
-        render_piyasa()
-        return
-    if mod == MOD_KRIPTO:
-        render_kripto()
-        return
 
+def _tek_hisse_akisi(ticker, run, a, api_key, model, use_web, edu,
+                     use_edgar, peers, call_text, maliyet):
+    """Tek Hisse akışı — eski main() gövdesi (davranış birebir aynı)."""
     if run and ticker:
         try:
             with st.spinner(f"{ticker} verisi indiriliyor…"):
@@ -16897,11 +17266,11 @@ def main():
             m["peers"] = build_peer_table(m, fetch_peers(peers))
         except Exception:
             m["peers"] = None
-    st.markdown(f"### {m['name']}  ·  `{m['ticker']}`  ·  {m['sector']} — "
-                f"{m['industry']}")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Fiyat", f"{m['cur']}{m['price']:,.2f}" if m["price"] else "—",
-              help=GLOSSARY["fiyat"])
+    _hero(f"{m['name']} · {m['ticker']}",
+          f"{m['sector']} — {m['industry']}")
+    _kpi = [("Fiyat",
+             f"{m['cur']}{m['price']:,.2f}" if m["price"] else "—",
+             None, "accent")]
     # (a3) Tek-nokta DCF yerine MONTE CARLO BANDI birincil: aralık, sahte
     # kesinlikten dürüsttür. Sıra: MC P25–P75 → senaryo aralığı → tek nokta.
     _mch = m.get("mc") or {}
@@ -16928,16 +17297,15 @@ def main():
         fair_lbl = "Adil Değer (tek nokta — temkinli)"
     else:
         fair_txt, fair_lbl = "—", "Adil Değer"
-    c2.metric(fair_lbl, fair_txt,
-              help=GLOSSARY["adil"] + " Aralık BİRİNCİLDİR; tek sayıya "
-                   "kesinlik yükleme. Mutlak DCF karar skoruna GİRMEZ "
-                   "(bilgi katmanı).")
-    c3.metric("Güvenlik Marjı", fmt_pct(m["mos"]), help=GLOSSARY["mos"])
-    c4.metric("Kalite Skoru",
-              f"{m['quality']:.0f}/100" if m.get("quality") is not None
-              else "—", help=GLOSSARY["kalite"])
-    c5.metric("Piyasa Değeri", fmt_money(m["mcap"], m["cur"]),
-              help=GLOSSARY["mcap"])
+    _kpi.append((fair_lbl, fair_txt, "aralık birincildir", "info"))
+    _kpi.append(("Güvenlik Marjı", fmt_pct(m["mos"]), None,
+                 "ok" if (m.get("mos") or 0) > 0 else "bad"))
+    _kpi.append(("Kalite Skoru",
+                 f"{m['quality']:.0f}/100"
+                 if m.get("quality") is not None else "—", None, "ok"))
+    _kpi.append(("Piyasa Değeri", fmt_money(m["mcap"], m["cur"]),
+                 None, "accent"))
+    kpi_serit(_kpi)
 
     try:
         m["_fark"] = durum_farki(m)
