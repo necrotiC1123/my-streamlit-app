@@ -16744,22 +16744,56 @@ def _ui_tok():
                 bad="#dc2626", info="#0284c7")
 
 
-def _hero(baslik, alt=""):
+def _hero(baslik, alt="", ust=""):
+    ustp = f'<div class="hero-eyebrow">{esc(ust)}</div>' if ust else ""
     altp = f"<p>{esc(alt)}</p>" if alt else ""
-    st.markdown(f'<div class="hero"><h1>{esc(baslik)}</h1>{altp}</div>',
+    st.markdown(f'<div class="hero">{ustp}<h1>{esc(baslik)}</h1>{altp}'
+                f'<div class="hero-cizgi"></div></div>',
                 unsafe_allow_html=True)
 
 
+def _sparkline_svg(vals, renk, w=132, h=36):
+    """Kapanış serisinden mini SVG çizgi (kart içi canlı grafik)."""
+    try:
+        v = [float(x) for x in vals if x == x][-60:]
+        if len(v) < 8:
+            return ""
+        lo, hi = min(v), max(v)
+        rng = (hi - lo) or 1.0
+        n = len(v)
+        pts = []
+        for i, x in enumerate(v):
+            px = i * (w - 4) / (n - 1) + 2
+            py = h - 3 - (x - lo) / rng * (h - 9)
+            pts.append(f"{px:.1f},{py:.1f}")
+        yol = " ".join(pts)
+        sx, sy = pts[-1].split(",")
+        return (f'<svg class="spark" width="{w}" height="{h}" '
+                f'viewBox="0 0 {w} {h}">'
+                f'<polygon points="2,{h-2} {yol} {w-2},{h-2}" '
+                f'fill="{renk}20"/>'
+                f'<polyline points="{yol}" fill="none" stroke="{renk}" '
+                f'stroke-width="2" stroke-linecap="round"/>'
+                f'<circle cx="{sx}" cy="{sy}" r="2.6" fill="{renk}"/>'
+                f'</svg>')
+    except Exception:
+        return ""
+
+
 def kpi_serit(kartlar):
-    """kartlar: [(etiket, değer, alt_yazı|None, ton), ...] → bento grid."""
+    """kartlar: [(etiket, değer, alt|None, ton[, ekstra_html]), ...]
+    5. eleman opsiyonel: kartın içine gömülecek HTML (örn. sparkline)."""
     T = _ui_tok()
     h = []
-    for lab, val, sub, ton in kartlar:
+    for kart in kartlar:
+        lab, val, sub, ton = kart[:4]
+        ek = kart[4] if len(kart) > 4 and kart[4] else ""
         renk = T.get(ton or "accent", T["accent"])
         altp = (f'<div style="color:{renk};font-size:.76rem;margin-top:3px;'
                 f'font-weight:600">{esc(sub)}</div>') if sub else ""
-        h.append(f'<div class="kpi"><div class="kpi-l">{esc(lab)}</div>'
-                 f'<div class="kpi-v">{esc(val)}</div>{altp}</div>')
+        h.append(f'<div class="kpi" style="--ka:{renk}">'
+                 f'<div class="kpi-l">{esc(lab)}</div>'
+                 f'<div class="kpi-v">{esc(val)}</div>{altp}{ek}</div>')
     st.markdown('<div class="kpi-grid">' + "".join(h) + "</div>",
                 unsafe_allow_html=True)
 
@@ -16774,22 +16808,17 @@ def rozet(text, ton="accent"):
 
 
 def gauge(pct, label, ton="ok"):
-    """0-100 → conic-gradient halka gösterge (SVG/JS'siz)."""
+    """0-100 → süpürerek dolan halka gösterge (CSS @property; JS yok)."""
     T = _ui_tok()
     renk = T.get(ton, T["ok"])
     p = max(0, min(100, int(round(pct or 0))))
     st.markdown(
-        f'<div style="display:flex;flex-direction:column;align-items:center;'
-        f'gap:6px;margin:4px 0">'
-        f'<div style="width:104px;height:104px;border-radius:50%;'
-        f'background:radial-gradient(closest-side,{T["card"]} 71%,'
-        f'transparent 72% 100%),conic-gradient({renk} {p*3.6:.0f}deg,'
-        f'{T["line"]} 0);display:flex;align-items:center;'
-        f'justify-content:center;border:1px solid {T["line"]}">'
-        f'<span style="color:{T["txt"]};font-weight:700;'
-        f'font-size:1.15rem">{p}</span></div>'
-        f'<span style="color:{T["mut"]};font-size:.8rem">{esc(label)}'
-        f'</span></div>', unsafe_allow_html=True)
+        f'<div class="gauge-kap">'
+        f'<div class="gauge-ring" style="--gp:{p*3.6:.0f}deg;--rk:{renk}">'
+        f'<div><span class="gauge-say">{p}</span>'
+        f'<span class="gauge-b">/100</span></div></div>'
+        f'<span class="gauge-l">{esc(label)}</span></div>',
+        unsafe_allow_html=True)
 
 
 def verdict_banner(label, emoji, kind, msg):
@@ -16797,16 +16826,14 @@ def verdict_banner(label, emoji, kind, msg):
     renk = {"success": T["ok"], "warning": T["warn"],
             "error": T["bad"], "info": T["info"]}.get(kind, T["info"])
     st.markdown(
-        f'<div style="display:flex;gap:14px;align-items:flex-start;'
-        f'background:linear-gradient(90deg,{renk}22,transparent 70%);'
-        f'border:1px solid {T["line"]};border-left:5px solid {renk};'
-        f'border-radius:14px;padding:16px 20px;margin:6px 0 10px">'
-        f'<span style="font-size:1.7rem;line-height:1.1">{emoji}</span>'
-        f'<div><div style="color:{T["txt"]};font-weight:800;'
-        f'font-size:1.15rem;letter-spacing:-.01em">HÜKÜM: {esc(label)}'
-        f'</div><div style="color:{T["mut"]};font-size:.92rem;'
-        f'margin-top:4px">{esc(msg)}</div></div></div>',
+        f'<div class="vb" style="--vk:{renk}">'
+        f'<div class="vb-e">{emoji}</div>'
+        f'<div><div class="vb-l">HÜKÜM: {esc(label)}</div>'
+        f'<div class="vb-m">{esc(msg)}</div></div></div>',
         unsafe_allow_html=True)
+
+
+
 
 
 def _tema_koyu_mu():
@@ -17037,27 +17064,122 @@ h1 {{
 }}
 </style>""", unsafe_allow_html=True)
     T = _ui_tok()
+    _koyu2 = _tema_koyu_mu()
+    _orb1 = "rgba(99,102,241,0.20)" if _koyu2 else "rgba(79,70,229,0.10)"
+    _orb2 = "rgba(34,197,94,0.10)" if _koyu2 else "rgba(22,163,74,0.07)"
     st.markdown(f"""
 <style>
-/* İSKELET: kenar çubuğu tamamen kapatıldı — navigasyon artık üstte */
+/* ═══ VİTRİN KATMANI v2 — iskelet + hareket + imza tipografi ═══ */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap');
 [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"]
   {{display:none !important;}}
-.hero {{background:linear-gradient(120deg,{T['accent']}1f,transparent 60%),
-       {T['card']};border:1px solid {T['line']};border-radius:18px;
-       padding:20px 24px;margin:4px 0 16px;}}
-.hero h1 {{margin:0;font-size:1.45rem;letter-spacing:-.02em;
-       background:none;-webkit-background-clip:initial;
-       background-clip:initial;color:{T['txt']};}}
-.hero p {{margin:6px 0 0;color:{T['mut']};font-size:.9rem;}}
-.kpi-grid {{display:grid;gap:12px;margin:6px 0 14px;
-       grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}}
-.kpi {{background:{T['card']};border:1px solid {T['line']};
-       border-radius:14px;padding:12px 14px;}}
-.kpi-l {{color:{T['mut']};font-size:.72rem;text-transform:uppercase;
-       letter-spacing:.05em;font-weight:600;}}
-.kpi-v {{color:{T['txt']};font-size:1.3rem;font-weight:750;
-       font-variant-numeric:tabular-nums;letter-spacing:-.01em;
-       margin-top:2px;}}
+::selection {{background:{T['accent']}55;}}
+
+/* Nefes alan zemin: iki yavaş ışık küresi + tanecik dokusu */
+@keyframes orbA {{0%{{transform:translate(0,0)}}50%{{transform:translate(70px,40px)}}100%{{transform:translate(0,0)}}}}
+@keyframes orbB {{0%{{transform:translate(0,0)}}50%{{transform:translate(-60px,-30px)}}100%{{transform:translate(0,0)}}}}
+[data-testid="stAppViewContainer"]::after {{
+  content:""; position:fixed; width:640px; height:640px; left:-160px;
+  top:-180px; border-radius:50%; pointer-events:none; z-index:0;
+  background:radial-gradient(circle,{_orb1},transparent 62%);
+  animation:orbA 34s ease-in-out infinite; filter:blur(10px);}}
+.stMainBlockContainer::after {{
+  content:""; position:fixed; width:560px; height:560px; right:-140px;
+  bottom:-160px; border-radius:50%; pointer-events:none; z-index:0;
+  background:radial-gradient(circle,{_orb2},transparent 60%);
+  animation:orbB 41s ease-in-out infinite; filter:blur(10px);}}
+[data-testid="stAppViewContainer"]::before {{
+  content:""; position:fixed; inset:0; pointer-events:none; opacity:.5;
+  z-index:0; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.017 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");}}
+
+/* İmza tipografi: başlıklar Space Grotesk */
+h1,h2,h3,.hero h1,.gauge-say,.vb-l {{font-family:'Space Grotesk','Inter',sans-serif;}}
+
+/* HERO v2: eyebrow + dev gradyan başlık + gradyan çizgi */
+.hero {{position:relative;background:
+       linear-gradient(120deg,{T['accent']}24,transparent 55%),{T['card']};
+       border:1px solid {T['line']};border-radius:20px;
+       padding:26px 30px 22px;margin:4px 0 18px;overflow:hidden;
+       box-shadow:0 20px 50px -30px {T['accent']}66;}}
+.hero::after {{content:"";position:absolute;inset:0;pointer-events:none;
+       background:repeating-linear-gradient(115deg,transparent 0 22px,
+       {T['line']} 22px 23px);opacity:.22;}}
+.hero-eyebrow {{color:{T['accent']};font-size:.72rem;font-weight:700;
+       letter-spacing:.22em;text-transform:uppercase;margin-bottom:8px;}}
+.hero h1 {{margin:0;font-size:2.1rem;line-height:1.08;font-weight:700;
+       letter-spacing:-.025em;background:linear-gradient(100deg,
+       {T['txt']},{T['accent']} 130%);
+       -webkit-background-clip:text;background-clip:text;color:transparent;}}
+.hero p {{margin:8px 0 0;color:{T['mut']};font-size:.95rem;}}
+.hero-cizgi {{height:2px;margin-top:16px;border-radius:2px;
+       background:linear-gradient(90deg,{T['accent']},{T['accent']}00 70%);}}
+
+/* KPI v2: giriş animasyonu + üst aksan + dev ilk kart + spark */
+@keyframes kpiIn {{from{{opacity:0;transform:translateY(10px)}}to{{opacity:1;transform:none}}}}
+.kpi-grid {{display:grid;gap:13px;margin:6px 0 16px;
+       grid-template-columns:repeat(auto-fit,minmax(158px,1fr));}}
+.kpi {{position:relative;background:{T['card']};border:1px solid {T['line']};
+       border-radius:16px;padding:14px 16px 12px;overflow:hidden;
+       box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+       animation:kpiIn .5s cubic-bezier(.4,0,.2,1) both;
+       transition:transform .18s,box-shadow .18s,border-color .18s;}}
+.kpi:nth-child(1){{animation-delay:.02s}} .kpi:nth-child(2){{animation-delay:.08s}}
+.kpi:nth-child(3){{animation-delay:.14s}} .kpi:nth-child(4){{animation-delay:.20s}}
+.kpi:nth-child(5){{animation-delay:.26s}} .kpi:nth-child(6){{animation-delay:.32s}}
+.kpi::before {{content:"";position:absolute;top:0;left:14px;right:14px;
+       height:2px;border-radius:2px;background:var(--ka,{T['accent']});
+       opacity:.85;}}
+.kpi:hover {{transform:translateY(-3px);border-color:{T['line']};
+       box-shadow:0 14px 34px -18px var(--ka,{T['accent']});}}
+.kpi-l {{color:{T['mut']};font-size:.7rem;text-transform:uppercase;
+       letter-spacing:.09em;font-weight:700;}}
+.kpi-v {{color:{T['txt']};font-size:1.42rem;font-weight:750;margin-top:3px;
+       font-variant-numeric:tabular-nums;letter-spacing:-.02em;}}
+.kpi:first-child .kpi-v {{font-size:1.9rem;background:linear-gradient(100deg,
+       {T['txt']},var(--ka,{T['accent']}));-webkit-background-clip:text;
+       background-clip:text;color:transparent;}}
+.spark {{display:block;margin-top:6px;}}
+
+/* GAUGE v2: süpürerek dolan halka (+@property) + ışıma */
+@property --gp {{syntax:'<angle>';initial-value:0deg;inherits:false;}}
+@keyframes gsweep {{from{{--gp:0deg}}}}
+.gauge-kap {{display:flex;flex-direction:column;align-items:center;gap:7px;margin:6px 0;}}
+.gauge-ring {{width:122px;height:122px;border-radius:50%;position:relative;
+       background:radial-gradient(closest-side,{T['card']} 72%,transparent 73% 100%),
+       conic-gradient(from -90deg,var(--rk) var(--gp),{T['line']} 0);
+       display:flex;align-items:center;justify-content:center;
+       border:1px solid {T['line']};animation:gsweep 1.1s cubic-bezier(.3,.7,.3,1) both;
+       box-shadow:0 0 34px -10px var(--rk);}}
+.gauge-say {{color:{T['txt']};font-weight:700;font-size:1.7rem;letter-spacing:-.02em;}}
+.gauge-b {{color:{T['mut']};font-size:.72rem;margin-left:2px;}}
+.gauge-l {{color:{T['mut']};font-size:.8rem;letter-spacing:.03em;}}
+
+/* HÜKÜM banner v2 */
+.vb {{position:relative;display:flex;gap:16px;align-items:center;
+      border:1px solid {T['line']};border-radius:18px;overflow:hidden;
+      padding:18px 22px;margin:8px 0 12px;background:
+      linear-gradient(95deg,color-mix(in srgb,var(--vk) 16%,transparent),transparent 65%),{T['card']};
+      box-shadow:0 18px 44px -26px var(--vk);}}
+.vb::after {{content:"";position:absolute;inset:0;pointer-events:none;opacity:.16;
+      background:repeating-linear-gradient(115deg,transparent 0 16px,var(--vk) 16px 17px);}}
+.vb-e {{flex:0 0 auto;width:56px;height:56px;border-radius:16px;display:flex;
+      align-items:center;justify-content:center;font-size:1.7rem;
+      background:color-mix(in srgb,var(--vk) 18%,transparent);border:1px solid color-mix(in srgb,var(--vk) 40%,transparent);}}
+.vb-l {{color:{T['txt']};font-weight:700;font-size:1.32rem;letter-spacing:-.015em;}}
+.vb-m {{color:{T['mut']};font-size:.93rem;margin-top:3px;max-width:70ch;}}
+
+/* Butonlar: parlama süpürmesi */
+[data-testid="stBaseButton-primary"] {{position:relative;overflow:hidden;}}
+[data-testid="stBaseButton-primary"]::after {{content:"";position:absolute;top:0;
+   left:-70%;width:45%;height:100%;transform:skewX(-20deg);
+   background:linear-gradient(90deg,transparent,rgba(255,255,255,.34),transparent);
+   transition:left .5s ease;}}
+[data-testid="stBaseButton-primary"]:hover::after {{left:125%;}}
+
+@media (prefers-reduced-motion: reduce) {{
+  .kpi,.gauge-ring,[data-testid="stAppViewContainer"]::after,
+  .stMainBlockContainer::after {{animation:none !important;}}
+}}
 </style>""", unsafe_allow_html=True)
 
 
@@ -17089,8 +17211,9 @@ def _giris_kapisi():
 
 
 def _pg_tek():
-    _hero("🔬 Tek Hisse — Derin Analiz",
-          "Ham veri → matematik → hüküm → istersen Claude raporu")
+    _hero("Tek Hisse — Derin Analiz",
+          "Ham veri → matematik → hüküm → istersen Claude raporu",
+          ust="🔬 Analiz Terminali")
     g = render_girdiler()
     _tek_hisse_akisi(*g)
 
@@ -17267,10 +17390,17 @@ def _tek_hisse_akisi(ticker, run, a, api_key, model, use_web, edu,
         except Exception:
             m["peers"] = None
     _hero(f"{m['name']} · {m['ticker']}",
-          f"{m['sector']} — {m['industry']}")
+          f"{m['sector']} — {m['industry']}",
+          ust="Derin Analiz Raporu")
+    try:
+        _spk = _sparkline_svg(
+            list((m.get("_hist") or {}).get("Close", [])),
+            _ui_tok()["accent"])
+    except Exception:
+        _spk = ""
     _kpi = [("Fiyat",
              f"{m['cur']}{m['price']:,.2f}" if m["price"] else "—",
-             None, "accent")]
+             "son 60 gün" if _spk else None, "accent", _spk)]
     # (a3) Tek-nokta DCF yerine MONTE CARLO BANDI birincil: aralık, sahte
     # kesinlikten dürüsttür. Sıra: MC P25–P75 → senaryo aralığı → tek nokta.
     _mch = m.get("mc") or {}
