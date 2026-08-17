@@ -1,16 +1,63 @@
-# Bu dosyanın GitHub'daki yolu: .streamlit/config.toml
-# (Add file → Create new file → isim kutusuna ".streamlit/config.toml" yaz)
+# =====================================================================
+#  ÇİFT TEMA (streamlit >= 1.51): koyu VARSAYILAN + açık premium.
+#  Kullanıcı sağ üst ⋮ → Settings → Theme'den Açık/Koyu/Sistem seçer;
+#  tercih kalıcıdır (1.51 persist düzeltmesi). Kod + grafikler +
+#  JS sahneleri gerçek temayı okuyup kendiliğinden uyar.
+# =====================================================================
 
 [theme]
-base = "light"
-primaryColor = "#2563eb"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f6f8fa"
-textColor = "#1c2430"
-font = "sans serif"
+base = "dark"
 
-[theme.sidebar]
-backgroundColor = "#f7f9fb"
+# Fontlar (Google URL kısayolu) — yalnız kökte tanımlanır
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap, sans-serif"
+headingFont = "Space Grotesk:https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap, sans-serif"
+codeFont = "JetBrains Mono:https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap, monospace"
+baseFontSize = 15
+baseRadius = "0.75rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+primaryColor = "#6366f1"
+
+# Grafik paletleri (Wong renk-körü-güvenli; sequential TAM 10) — kökte
+chartCategoricalColors = [
+  "#56b4e9", "#e69f00", "#009e73", "#f0e442",
+  "#0072b2", "#d55e00", "#cc79a7", "#94a3b8",
+]
+chartSequentialColors = [
+  "#0b0e14", "#122033", "#153b52", "#166a86", "#1497a8",
+  "#22c3b8", "#5fddb8", "#9ceeb0", "#cff6b8", "#f0f9c8",
+]
+
+[theme.dark]
+backgroundColor = "#0b0e14"
+secondaryBackgroundColor = "#131722"
+textColor = "#e7ecf3"
+primaryColor = "#6366f1"
+linkColor = "#8b93f8"
+codeTextColor = "#e7ecf3"
+codeBackgroundColor = "#171c26"
+borderColor = "#242b3a"
+dataframeBorderColor = "#2b3242"
+dataframeHeaderBackgroundColor = "#171c26"
+
+[theme.light]
+backgroundColor = "#fafaf9"
+secondaryBackgroundColor = "#f4f4f2"
+textColor = "#1c1c1e"
+primaryColor = "#4f46e5"          # açık zeminde AA geçen koyu indigo
+linkColor = "#4f46e5"
+codeTextColor = "#1c1c1e"
+codeBackgroundColor = "#eceae6"
+borderColor = "#e4e4e1"
+dataframeBorderColor = "#dededb"
+dataframeHeaderBackgroundColor = "#f4f4f2"
+
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+fileWatcherType = "none"
+maxUploadSize = 50
 
 [browser]
 gatherUsageStats = false
