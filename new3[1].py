@@ -9564,20 +9564,21 @@ def render_karar_ekrani(m, a):
 
 def render_verdict(m):
     label, emoji, kind, msg = m["verdict"]
-    verdict_banner(label, emoji, kind, msg)
-    _g1, _g2, _gb = st.columns([1, 1, 2.6])
-    with _g1:
-        if m.get("quality") is not None:
-            gauge(m["quality"], "Kalite",
-                  "ok" if m["quality"] >= 60 else
-                  "warn" if m["quality"] >= 40 else "bad")
-    with _g2:
-        if m.get("score") is not None:
-            gauge(m["score"], "Pahalılık",
-                  "ok" if m["score"] < 35 else
-                  "warn" if m["score"] < 55 else "bad")
-    with _gb:
-        st.empty()
+    if not sahne_hukum(m):
+        verdict_banner(label, emoji, kind, msg)
+        _g1, _g2, _gb = st.columns([1, 1, 2.6])
+        with _g1:
+            if m.get("quality") is not None:
+                gauge(m["quality"], "Kalite",
+                      "ok" if m["quality"] >= 60 else
+                      "warn" if m["quality"] >= 40 else "bad")
+        with _g2:
+            if m.get("score") is not None:
+                gauge(m["score"], "Pahalılık",
+                      "ok" if m["score"] < 35 else
+                      "warn" if m["score"] < 55 else "bad")
+        with _gb:
+            st.empty()
     q = m.get("quality")
     sc = m.get("score")
     st.caption(f"İki eksenli hüküm → **Şirket kalitesi:** "
@@ -16734,11 +16735,13 @@ def esc(x):
 
 def _ui_tok():
     if _tema_koyu_mu():
-        return dict(card="#131722", line="rgba(255,255,255,0.09)",
+        return dict(bg="#0b0e14",
+                    card="#131722", line="rgba(255,255,255,0.09)",
                     txt="#e7ecf3", mut="rgba(231,236,243,0.60)",
                     accent="#6366f1", ok="#22c55e", warn="#f59e0b",
                     bad="#ef4444", info="#38bdf8")
-    return dict(card="#ffffff", line="rgba(0,0,0,0.09)",
+    return dict(bg="#fafaf9",
+                card="#ffffff", line="rgba(0,0,0,0.09)",
                 txt="#1c1c1e", mut="rgba(28,28,30,0.60)",
                 accent="#4f46e5", ok="#16a34a", warn="#d97706",
                 bad="#dc2626", info="#0284c7")
@@ -16834,6 +16837,411 @@ def verdict_banner(label, emoji, kind, msg):
 
 
 
+
+
+# ═══════════════════════════════════════════════════════════════════
+# JS SAHNE KATMANI — iframe içinde GERÇEK JavaScript (vitrin şartnamesi)
+# components.html iframe'i: JS çalışır, CDN yüklenir (Community Cloud
+# CSP koymaz — issue #9160), Python→JS köprüsü _json_guvenli ile XSS
+# emniyetli. Her sahne_* False dönerse çağıran CSS kartlara düşer.
+# Sert sınırlar: iframe her rerun'da yeniden yüklenir (animasyon
+# tekrar oynar), yükseklik sabittir, içinden Python'a tık gitmez.
+# ═══════════════════════════════════════════════════════════════════
+_SAHNE_BAS = """<!DOCTYPE html><html lang="tr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:%(bg)s;--card:%(card)s;--line:%(line)s;--accent:%(accent)s;
+--ok:%(ok)s;--warn:%(warn)s;--bad:%(bad)s;--txt:%(txt)s;--mut:%(mut)s}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:%(bg)s;color:var(--txt);height:100%%;
+font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+overflow:hidden}
+h1,h2,h3,.disp{font-family:'Space Grotesk','Inter',sans-serif}
+.tnum{font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;
+transition:none!important}}
+</style></head><body>
+<script>const DATA=%(data)s;const TOK=%(tok)s;</script>
+%(govde)s
+</body></html>"""
+
+
+def _json_guvenli(obj):
+    """<script> içine gömülmeye hazır JSON: </script> kaçışı, <,>,&
+    ve U+2028/29 nötrlenir (XSS-güvenli köprü)."""
+    s = json.dumps(obj, ensure_ascii=False, allow_nan=False, default=str)
+    return (s.replace("<", "\\u003c").replace(">", "\\u003e")
+             .replace("&", "\\u0026")
+             .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def _sahne_belge(govde, veri):
+    T = _ui_tok()
+    return _SAHNE_BAS % {
+        "bg": T["bg"], "card": T["card"], "line": T["line"],
+        "accent": T["accent"], "ok": T["ok"], "warn": T["warn"],
+        "bad": T["bad"], "txt": T["txt"], "mut": T["mut"],
+        "data": _json_guvenli(veri), "tok": _json_guvenli(T),
+        "govde": govde}
+
+
+def _sahne(govde, veri, yukseklik):
+    """Belgeyi kur, sürüm-bağımsız iframe'e bas. Hata → False
+    (çağıran CSS fallback'ine düşer; sayfa asla boş kalmaz)."""
+    try:
+        belge = _sahne_belge(govde, veri)
+        if hasattr(st, "iframe"):          # >=1.56 yeni API
+            try:
+                st.iframe(belge, height=yukseklik)
+                return True
+            except Exception:
+                pass
+        import streamlit.components.v1 as _components
+        _components.html(belge, height=yukseklik, scrolling=False)
+        return True
+    except Exception:
+        return False
+
+
+# ── ŞABLON 1: HERO + KPI BOARD (392px) ─────────────────────────────
+_HERO_JS = r"""
+<canvas id="orb"></canvas>
+<div class="wrap">
+  <div class="eyebrow" id="eb"></div>
+  <h1 class="title" id="ti"></h1>
+  <div class="sub" id="su"></div>
+  <div class="kpis" id="kp"></div>
+  <canvas id="spark"></canvas>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/countup.js/2.8.0/countUp.umd.js"></script>
+<style>
+.wrap{position:relative;z-index:2;padding:20px 24px 14px;height:100%;
+  display:flex;flex-direction:column}
+#orb{position:absolute;inset:0;width:100%;height:100%;z-index:1;opacity:.5}
+.eyebrow{letter-spacing:.2em;font-size:11px;color:var(--accent);
+  text-transform:uppercase;font-weight:700}
+.title{font-size:30px;font-weight:700;margin:3px 0 1px;line-height:1.05;
+  background:linear-gradient(94deg,var(--txt),var(--accent) 130%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--mut);font-size:12.5px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));
+  gap:11px}
+.kpi{background:color-mix(in srgb,var(--card) 78%,transparent);
+  border:1px solid var(--line);border-radius:15px;padding:12px 14px;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  opacity:0;transform:translateY(10px);animation:rise .55s forwards}
+.kpi .lab{font-size:10px;color:var(--mut);text-transform:uppercase;
+  letter-spacing:.09em;font-weight:700}
+.kpi .val{font-size:21px;font-weight:650;margin-top:4px;color:var(--txt)}
+.kpi:first-child .val{font-size:25px;
+  background:linear-gradient(100deg,var(--txt),var(--accent));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+@keyframes rise{to{opacity:1;transform:none}}
+#spark{width:100%;height:56px;margin-top:12px}
+</style>
+<script>
+(function(){
+  var esc=function(s){return String(s==null?"":s);};
+  document.getElementById('eb').textContent=esc(DATA.ticker)+
+    (DATA.sector?' · '+esc(DATA.sector):'');
+  document.getElementById('ti').textContent=esc(DATA.name);
+  document.getElementById('su').textContent=[esc(DATA.industry),
+    esc(DATA.mcap_txt)].filter(Boolean).join(' · ');
+
+  var kpis=[
+    {lab:'Fiyat',end:DATA.price,pre:DATA.cur,dec:2},
+    {lab:DATA.fair_lbl||'Değer Bandı',txt:DATA.fair_txt||'—'},
+    {lab:'Güvenlik Marjı',end:DATA.mos,suf:'%',dec:1},
+    {lab:'Kalite',end:DATA.quality,suf:'/100',dec:0},
+    {lab:'Piyasa Değeri',txt:DATA.mcap_txt||'—'}
+  ];
+  var box=document.getElementById('kp');
+  kpis.forEach(function(k,i){
+    var d=document.createElement('div');d.className='kpi';
+    d.style.animationDelay=(i*80)+'ms';
+    var lab=document.createElement('div');lab.className='lab';
+    lab.textContent=k.lab;
+    var val=document.createElement('div');val.className='val tnum';
+    val.id='v'+i;d.appendChild(lab);d.appendChild(val);box.appendChild(d);
+    if(k.txt!==undefined){val.textContent=k.txt;return;}
+    if(k.end==null){val.textContent='—';return;}
+    if(window.countUp&&countUp.CountUp){
+      new countUp.CountUp('v'+i,k.end,{duration:1.4,
+        decimalPlaces:k.dec||0,prefix:k.pre||'',suffix:k.suf||'',
+        separator:',',decimal:'.'}).start();
+    }else{val.textContent=(k.pre||'')+k.end.toFixed(k.dec||0)+(k.suf||'');}
+  });
+
+  var c=document.getElementById('spark');
+  var a=DATA.closes||[];
+  if(a.length>7){
+    var x=c.getContext('2d');
+    var w=c.width=c.offsetWidth*2,h=c.height=112;
+    var mn=Math.min.apply(null,a),mx=Math.max.apply(null,a),n=a.length;
+    var px=function(i){return i/(n-1)*w;};
+    var py=function(v){return h-((v-mn)/((mx-mn)||1))*(h-18)-9;};
+    var g=x.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,TOK.accent+'59');g.addColorStop(1,TOK.accent+'00');
+    x.beginPath();x.moveTo(0,h);
+    a.forEach(function(v,i){x.lineTo(px(i),py(v));});
+    x.lineTo(w,h);x.closePath();x.fillStyle=g;x.fill();
+    x.beginPath();
+    a.forEach(function(v,i){i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v));});
+    x.strokeStyle=(a[n-1]>=a[0])?TOK.ok:TOK.bad;
+    x.lineWidth=3;x.lineJoin='round';x.stroke();
+  }else{c.style.display='none';}
+
+  var oc=document.getElementById('orb'),o=oc.getContext('2d');
+  oc.width=oc.offsetWidth;oc.height=oc.offsetHeight;
+  var orbs=[0,1,2,3,4].map(function(){return{
+    x:Math.random()*oc.width,y:Math.random()*oc.height,
+    r:55+Math.random()*85,dx:(Math.random()-.5)*.3,
+    dy:(Math.random()-.5)*.3};});
+  var dur=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function ciz(){o.clearRect(0,0,oc.width,oc.height);
+    orbs.forEach(function(b){
+      var g=o.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
+      g.addColorStop(0,TOK.accent+'3d');g.addColorStop(1,TOK.accent+'00');
+      o.fillStyle=g;o.beginPath();o.arc(b.x,b.y,b.r,0,7);o.fill();
+      b.x+=b.dx;b.y+=b.dy;
+      if(b.x<0||b.x>oc.width)b.dx*=-1;
+      if(b.y<0||b.y>oc.height)b.dy*=-1;});
+    if(!dur)requestAnimationFrame(ciz);}
+  ciz();
+})();
+</script>
+"""
+
+# ── ŞABLON 2: HÜKÜM SAHNESİ — ECharts glow gauge (344px) ───────────
+_HUKUM_JS = r"""
+<div class="stage">
+  <div id="g1" class="gauge"></div>
+  <div class="center">
+    <div class="squircle" id="emo"></div>
+    <div class="banner disp" id="lab"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+  <div id="g2" class="gauge"></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+.stage{display:grid;grid-template-columns:1fr 1.15fr 1fr;
+  align-items:center;height:100%;padding:6px 4px}
+.gauge{height:300px;min-width:0}
+.center{text-align:center;padding:0 10px}
+.squircle{width:62px;height:62px;margin:0 auto 10px;border-radius:21px;
+  display:grid;place-items:center;font-size:32px;
+  background:color-mix(in srgb,var(--txt) 6%,transparent);
+  border:1px solid var(--line)}
+.banner{font-size:22px;font-weight:700;margin-bottom:6px;
+  letter-spacing:-.01em}
+.msg{font-size:12.5px;color:var(--mut);line-height:1.55;max-width:46ch;
+  margin:0 auto}
+.fallb{display:grid;place-items:center;height:100%;color:var(--txt)}
+.fallb b{font-size:40px;display:block}
+</style>
+<script>
+(function(){
+  var KIND={success:TOK.ok,warning:TOK.warn,error:TOK.bad,info:TOK.accent};
+  var col=KIND[DATA.kind]||TOK.accent;
+  var emo=document.getElementById('emo');
+  emo.textContent=DATA.emoji||'⚖️';
+  emo.style.boxShadow='0 0 42px '+col+'55';
+  var lab=document.getElementById('lab');
+  lab.textContent='HÜKÜM: '+(DATA.label||'');
+  lab.style.color=col;lab.style.textShadow='0 0 26px '+col+'66';
+  document.getElementById('msg').textContent=DATA.msg||'';
+
+  function qcol(v){return v>=60?TOK.ok:v>=40?TOK.warn:TOK.bad;}
+  function pcol(v){return v<35?TOK.ok:v<=55?TOK.warn:TOK.bad;}
+
+  function bas(id,val,ad,c){
+    var el=document.getElementById(id);
+    if(val==null){el.innerHTML='<div class="fallb"><div>'
+      +'<b>—</b>'+ad+'</div></div>';return;}
+    if(typeof echarts==='undefined'){
+      el.innerHTML='<div class="fallb"><div style="color:'+c+'">'
+        +'<b class="tnum">'+Math.round(val)+'</b>'+ad+'</div></div>';
+      return;}
+    var ch=echarts.init(el,null,{renderer:'canvas'});
+    ch.setOption({series:[{type:'gauge',center:['50%','56%'],
+      radius:'86%',startAngle:225,endAngle:-45,min:0,max:100,
+      animationDuration:1500,animationEasing:'cubicOut',
+      axisLine:{roundCap:true,lineStyle:{width:15,
+        color:[[1,'rgba(148,163,184,0.14)']]}},
+      progress:{show:true,roundCap:true,width:15,itemStyle:{
+        color:{type:'linear',x:0,y:1,x2:1,y2:0,colorStops:[
+          {offset:0,color:c},{offset:1,color:TOK.accent}]},
+        shadowColor:c+'99',shadowBlur:20}},
+      pointer:{show:true,length:'58%',width:4,
+        itemStyle:{color:TOK.txt,shadowColor:c+'aa',shadowBlur:10}},
+      anchor:{show:true,showAbove:true,size:14,itemStyle:{
+        color:TOK.bg,borderColor:c,borderWidth:4,
+        shadowColor:c+'cc',shadowBlur:10}},
+      axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},
+      detail:{valueAnimation:true,formatter:'{value}',fontSize:40,
+        fontWeight:'bolder',color:TOK.txt,offsetCenter:[0,'34%'],
+        fontFamily:'Space Grotesk'},
+      title:{show:true,offsetCenter:[0,'64%'],fontSize:14,color:TOK.mut},
+      data:[{value:Math.round(val),name:ad}]}]});
+    addEventListener('resize',function(){ch.resize();});
+  }
+  bas('g1',DATA.quality,'Kalite',
+      DATA.quality==null?TOK.mut:qcol(DATA.quality));
+  bas('g2',DATA.score,'Pahalılık',
+      DATA.score==null?TOK.mut:pcol(DATA.score));
+})();
+</script>
+"""
+
+# ── ŞABLON 3: FİYAT PANELİ — lightweight-charts v5 (466px) ─────────
+_FIYAT_JS = r"""
+<div class="leg" id="leg"></div>
+<div id="chart"></div>
+<script src="https://unpkg.com/lightweight-charts@5.0.8/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+#chart{width:100%;height:404px}
+.leg{display:flex;gap:14px;padding:8px 12px 4px;font-size:12px;
+  color:var(--mut);align-items:baseline;flex-wrap:wrap}
+.leg b{color:var(--txt)}
+.leg .t{font-weight:700;color:var(--txt);margin-right:4px;
+  font-family:'Space Grotesk'}
+.hata{padding:44px;text-align:center;color:var(--mut)}
+</style>
+<script>
+(function(){
+  var el=document.getElementById('chart');
+  if(!window.LightweightCharts){
+    el.innerHTML='<div class="hata">Grafik motoru yüklenemedi (CDN) — '
+      +'sekmelerdeki grafikler geçerlidir.</div>';return;}
+  var LWC=window.LightweightCharts;
+  var chart=LWC.createChart(el,{
+    layout:{background:{type:'solid',color:'transparent'},
+      textColor:TOK.mut,fontFamily:'Inter'},
+    grid:{vertLines:{color:'rgba(148,163,184,.07)'},
+      horzLines:{color:'rgba(148,163,184,.07)'}},
+    rightPriceScale:{borderColor:'rgba(148,163,184,.12)'},
+    timeScale:{borderColor:'rgba(148,163,184,.12)'},
+    crosshair:{mode:1,
+      vertLine:{color:TOK.accent,labelBackgroundColor:TOK.accent},
+      horzLine:{color:TOK.accent,labelBackgroundColor:TOK.accent}},
+    autoSize:true});
+  var s=chart.addSeries(LWC.CandlestickSeries,{
+    upColor:TOK.ok,downColor:TOK.bad,borderUpColor:TOK.ok,
+    borderDownColor:TOK.bad,wickUpColor:TOK.ok,wickDownColor:TOK.bad});
+  s.setData(DATA.ohlc||[]);
+  function pl(fiyat,renk,ad,stil){
+    if(fiyat==null)return;
+    s.createPriceLine({price:fiyat,color:renk,lineWidth:1,
+      lineStyle:stil,axisLabelVisible:true,title:ad});}
+  var b=DATA.bant||{};
+  pl(b.p75,TOK.warn,' MC P75',2);
+  pl(b.p25,TOK.ok,' MC P25',2);
+  pl(b.fair,'#a78bfa',' adil',0);
+  (DATA.dilimler||[]).forEach(function(d){
+    pl(d.seviye,TOK.accent,' '+d.label,3);});
+  pl(DATA.izleme,TOK.mut,' izleme',1);
+  chart.timeScale().fitContent();
+  var son=(DATA.ohlc||[]).slice(-1)[0];
+  if(son){document.getElementById('leg').innerHTML=
+    '<span class="t">'+String(DATA.cur||'')+'</span>'+
+    '<span>A <b class="tnum">'+son.open+'</b></span>'+
+    '<span>Y <b class="tnum">'+son.high+'</b></span>'+
+    '<span>D <b class="tnum">'+son.low+'</b></span>'+
+    '<span>K <b class="tnum">'+son.close+'</b></span>'+
+    '<span style="margin-left:auto;color:'+TOK.mut+'">kesikli: MC bandı'
+    +' · mavi: kademe dilimleri</span>';}
+})();
+</script>
+"""
+
+
+def sahne_hero(m, fair_lbl, fair_txt):
+    """Şirket hero + KPI panosu (count-up + canvas). False → CSS'e düş."""
+    try:
+        closes = []
+        h = m.get("_hist")
+        if h is not None and "Close" in getattr(h, "columns", []):
+            closes = [round(float(x), 4) for x in
+                      pd.Series(h["Close"]).dropna().tail(60)]
+        veri = {
+            "name": m.get("name") or m.get("ticker") or "",
+            "ticker": m.get("ticker") or "",
+            "sector": m.get("sector") or "",
+            "industry": m.get("industry") or "",
+            "cur": m.get("cur") or "$",
+            "price": float(m["price"]) if m.get("price") else None,
+            "fair_lbl": fair_lbl, "fair_txt": fair_txt,
+            "mos": (float(m["mos"]) * 100
+                    if m.get("mos") is not None else None),
+            "quality": (float(m["quality"])
+                        if m.get("quality") is not None else None),
+            "mcap_txt": fmt_money(m.get("mcap"), m.get("cur") or "$"),
+            "closes": closes}
+        return _sahne(_HERO_JS, veri, 392)
+    except Exception:
+        return False
+
+
+def sahne_hukum(m):
+    """Hüküm sahnesi: iki ışıyan gauge + merkez banner. False → CSS."""
+    try:
+        label, emoji, kind, msg = m["verdict"]
+        veri = {"label": str(label), "emoji": str(emoji),
+                "kind": str(kind), "msg": str(msg),
+                "quality": (float(m["quality"])
+                            if m.get("quality") is not None else None),
+                "score": (float(m["score"])
+                          if m.get("score") is not None else None)}
+        return _sahne(_HUKUM_JS, veri, 344)
+    except Exception:
+        return False
+
+
+def sahne_fiyat(m):
+    """TradingView-motoru mum paneli: MC bandı + kademe dilimleri
+    fiyat çizgisi olarak işlenir. Veri kısaysa sessizce atlanır."""
+    try:
+        h = m.get("_hist")
+        if h is None or len(h) < 40:
+            return False
+        kolonlar = set(getattr(h, "columns", []))
+        if not {"Open", "High", "Low", "Close"}.issubset(kolonlar):
+            return False
+        d = h.tail(500)
+        idx = pd.to_datetime(d.index)
+        gorulen, ohlc = set(), []
+        for ts, o, y, lo, c in zip(idx, d["Open"], d["High"],
+                                   d["Low"], d["Close"]):
+            gun = ts.strftime("%Y-%m-%d")
+            if gun in gorulen:
+                continue
+            gorulen.add(gun)
+            ohlc.append({"time": gun, "open": round(float(o), 4),
+                         "high": round(float(y), 4),
+                         "low": round(float(lo), 4),
+                         "close": round(float(c), 4)})
+        mc = m.get("mc") or {}
+        kd = m.get("kademe") or {}
+        dil = [{"seviye": round(float(x["seviye"]), 4),
+                "label": f"D{i+1}"}
+               for i, x in enumerate(kd.get("dilimler") or [])
+               if x.get("seviye")]
+        def _f(v):
+            return round(float(v), 4) if v else None
+        veri = {"ohlc": ohlc,
+                "bant": {"p25": _f(mc.get("p25")),
+                         "p75": _f(mc.get("p75")),
+                         "fair": _f(m.get("fair"))},
+                "dilimler": dil,
+                "izleme": _f(kd.get("izleme_esigi")),
+                "cur": m.get("cur") or "$"}
+        return _sahne(_FIYAT_JS, veri, 466)
+    except Exception:
+        return False
 
 
 def _tema_koyu_mu():
@@ -17389,9 +17797,6 @@ def _tek_hisse_akisi(ticker, run, a, api_key, model, use_web, edu,
             m["peers"] = build_peer_table(m, fetch_peers(peers))
         except Exception:
             m["peers"] = None
-    _hero(f"{m['name']} · {m['ticker']}",
-          f"{m['sector']} — {m['industry']}",
-          ust="Derin Analiz Raporu")
     try:
         _spk = _sparkline_svg(
             list((m.get("_hist") or {}).get("Close", [])),
@@ -17435,7 +17840,12 @@ def _tek_hisse_akisi(ticker, run, a, api_key, model, use_web, edu,
                  if m.get("quality") is not None else "—", None, "ok"))
     _kpi.append(("Piyasa Değeri", fmt_money(m["mcap"], m["cur"]),
                  None, "accent"))
-    kpi_serit(_kpi)
+    if not sahne_hero(m, fair_lbl, fair_txt):
+        _hero(f"{m['name']} · {m['ticker']}",
+              f"{m['sector']} — {m['industry']}",
+              ust="Derin Analiz Raporu")
+        kpi_serit(_kpi)
+    sahne_fiyat(m)
 
     try:
         m["_fark"] = durum_farki(m)
